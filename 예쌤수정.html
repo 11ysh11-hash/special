@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>즐거운 리코더 교실</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 스크롤바 숨김 처리용 CSS */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // --- [아이콘 컴포넌트 생성 (lucide-react 대체용)] ---
+    const Icon = ({ path, size = 24, className = "", fill = "none" }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        {path}
+      </svg>
+    );
+    const Music = (p) => <Icon {...p} path={<><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></>} />;
+    const Home = (p) => <Icon {...p} path={<><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>} />;
+    const ChevronRight = (p) => <Icon {...p} path={<polyline points="9 18 15 12 9 6"/>} />;
+    const Play = (p) => <Icon {...p} path={<polygon points="5 3 19 12 5 21 5 3"/>} />;
+    const Square = (p) => <Icon {...p} path={<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>} />;
+    const RotateCcw = (p) => <Icon {...p} path={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>} />;
+    const X = (p) => <Icon {...p} path={<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>} />;
+    const HandMetal = (p) => <Icon {...p} path={<><path d="M18 14v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 4 0v5"/><path d="M11 3a2 2 0 0 1 4 0v9"/><path d="M15 5a2 2 0 0 1 4 0v9"/></>} />;
+    const Sparkles = (p) => <Icon {...p} path={<path d="m12 3-1.9 5.8a2 2 0 0 1-1.2 1.2L3 12l5.8 1.9a2 2 0 0 1 1.2 1.2L12 21l1.9-5.8a2 2 0 0 1 1.2-1.2L21 12l-5.8-1.9a2 2 0 0 1-1.2-1.2Z"/>} />;
+
+    // --- [Constants & Data] 음정 데이터 및 노래 정보 ---
+    const NOTE_DATA = {
+      '솔': { yPos: 40, fingers: [0, 1, 2, 3], color: 'bg-emerald-600', hex: '#059669', freq: 392.00 },
+      '라': { yPos: 33, fingers: [0, 1, 2], color: 'bg-emerald-600', hex: '#059669', freq: 440.00 },
+      '시': { yPos: 26, fingers: [0, 1], color: 'bg-emerald-600', hex: '#059669', freq: 493.88 },
+      '높은 도': { yPos: 19, fingers: [0, 2], color: 'bg-emerald-600', hex: '#059669', freq: 523.25 },
+      '높은 레': { yPos: 12, fingers: [2], color: 'bg-emerald-600', hex: '#059669', freq: 587.33 },
+      '낮은 도': { yPos: 82, fingers: [0, 1, 2, 3, 4, 5, 6, 7], color: 'bg-blue-600', hex: '#2563eb', ledgerLine: true, freq: 261.63 },
+      '낮은 레': { yPos: 75, fingers: [0, 1, 2, 3, 4, 5, 6], color: 'bg-blue-600', hex: '#2563eb', freq: 293.66 },
+      '낮은 미': { yPos: 68, fingers: [0, 1, 2, 3, 4, 5], color: 'bg-blue-600', hex: '#2563eb', freq: 329.63 },
+      '낮은 파': { yPos: 61, fingers: [0, 1, 2, 3, 4], color: 'bg-blue-600', hex: '#2563eb', freq: 349.23 },
+      '높은 미': { yPos: 5, fingers: [0.5, 1, 2, 3, 4, 5], color: 'bg-purple-600', hex: '#9333ea', freq: 659.25 },
+      '높은 파': { yPos: -2, fingers: [0.5, 1, 2, 3, 4], color: 'bg-purple-600', hex: '#9333ea', freq: 698.46 },
+    };
+
+    const STEPS = [
+      { id: 'left', title: '1단계: 왼손 연주', desc: '시, 라, 솔, 높은 도, 높은 레', color: 'bg-emerald-500', defaultNote: '시', icon: <HandMetal size={32} /> },
+      { id: 'right', title: '2단계: 양손 연주', desc: '낮은 파, 낮은 미\n낮은 레, 낮은 도', color: 'bg-blue-500', defaultNote: '낮은 파', icon: <div className="flex gap-1"><HandMetal size={24} /><HandMetal size={24} className="scale-x-[-1]" /></div> },
+      { id: 'high', title: '3단계: 고음 연주', desc: '높은 미, 높은 파', color: 'bg-purple-500', defaultNote: '높은 미', icon: <Sparkles size={32} /> },
+    ];
+
+    const ALL_SONGS = [
+      { id: 'airplane', stepId: 'left', title: '비행기', notes: ['시', '라', '솔', '라', '시', '시', '시', '쉼표', '라', '라', '라', '쉼표', '시', '시', '시', '쉼표', '시', '라', '솔', '라', '시', '시', '시', '쉼표', '라', '라', '시', '라', '솔'] },
+      { id: 'cuckoo', stepId: 'left', title: '뻐꾸기', notes: ['솔', '낮은 미', '솔', '낮은 미', '쉼표', '라', '솔', '라', '솔', '쉼표', '솔', '솔', '라', '라', '솔', '솔', '낮은 미', '쉼표'] },
+      { id: 'butterfly', stepId: 'right', title: '나비야', notes: ['솔', '낮은 미', '낮은 미', '쉼표', '낮은 파', '낮은 레', '낮은 레', '쉼표', '낮은 도', '낮은 레', '낮은 미', '낮은 파', '솔', '솔', '솔', '쉼표'] },
+      { id: 'star', stepId: 'right', title: '작은 별', notes: ['낮은 도', '낮은 도', '솔', '솔', '라', '라', '솔', '쉼표', '낮은 파', '낮은 파', '낮은 미', '낮은 미', '낮은 레', '낮은 레', '낮은 도', '쉼표'] },
+      { id: 'edelweiss', stepId: 'high', title: '에델바이스', notes: ['낮은 미', '솔', '높은 레', '쉼표', '높은 도', '솔', '낮은 파', '쉼표', '낮은 미', '낮은 미', '낮은 미', '낮은 파', '솔', '라', '솔', '쉼표', '낮은 미', '솔', '높은 레', '쉼표', '높은 도', '솔', '낮은 파', '쉼표', '낮은 미', '솔', '솔', '라', '시', '높은 도', '높은 도', '쉼표'] },
+      { 
+        id: 'grandfather-clock', 
+        stepId: 'high', 
+        title: '할아버지의 시계', 
+        notes: [
+          '낮은 도', '낮은 미', '솔', '낮은 도', '높은 도', '높은 레', '높은 미', '높은 도', 
+          '라', '높은 도', '높은 레', '높은 도', '시', '라', '솔', '쉼표',
+          '낮은 도', '낮은 미', '솔', '낮은 도', '높은 도', '높은 레', '높은 미', '높은 도', 
+          '라', '높은 도', '시', '라', '솔', '라', '시', '높은 도', '쉼표',
+          '높은 미', '높은 레', '높은 도', '시', '라', '솔', '라', '시', '높은 도', '쉼표',
+          '높은 미', '높은 레', '높은 도', '시', '라', '솔', '라', '시', '높은 도', '쉼표'
+        ] 
+      }
+    ];
+
+    const CLEF_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/e/e8/G-clef.svg";
+
+    // --- [Sub-Components] ---
+    const RecorderHole = React.memo(({ num, filled, isHalf, activeColor, isBackHole }) => (
+      <div className="relative flex items-center justify-center">
+        <div className={`w-10 h-10 md:w-11 md:h-11 rounded-full border-2 border-slate-300 shadow-sm flex items-center justify-center transition-all duration-300 overflow-hidden bg-white
+            ${filled && !isHalf ? `${activeColor} border-slate-900 scale-105 shadow-md` : ''} 
+            ${isHalf ? 'border-slate-900 scale-105 shadow-md' : ''}`}>
+          {isHalf && (
+            <div className="absolute inset-0 flex">
+              <div className={`w-1/2 h-full ${activeColor}`}></div>
+              <div className="w-1/2 h-full bg-white"></div>
+            </div>
+          )}
+          <span className={`relative z-10 font-black text-sm md:text-base ${filled && !isHalf ? 'text-white' : 'text-slate-900'}`}>
+            {num}
+          </span>
+        </div>
+        {isHalf && isBackHole && (
+          <div className="absolute -bottom-8 whitespace-nowrap text-xs font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 animate-bounce">
+            반만 막기!
+          </div>
+        )}
+      </div>
+    ));
+
+    const GuidePanel = ({ noteInfo, noteName }) => {
+      if (noteName === '쉼표' || !noteInfo) return (
+        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center justify-center p-3 h-full relative overflow-hidden">
+            <div className="text-4xl font-black text-slate-300">잠시 쉬어요</div>
+        </div>
+      );
+
+      const label = noteName.replace('높은 ', '').replace('낮은 ', '');
+      const isSpecial = noteName.includes('높은') || noteName.includes('낮은');
+      const prefix = noteName.split(' ')[0];
+
+      return (
+        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center justify-center p-3 h-full relative overflow-hidden">
+          <div className="relative flex items-center justify-center scale-90 md:scale-100">
+            <div className="absolute top-[10px] -left-16 flex flex-col items-center z-20">
+              <span className="text-xl font-black text-slate-400 mb-1">뒤</span>
+              <RecorderHole num={0} filled={noteInfo.fingers.includes(0) || noteInfo.fingers.includes(0.5)} isHalf={noteInfo.fingers.includes(0.5)} activeColor={noteInfo.color} isBackHole={true} />
+            </div>
+            <div className="absolute top-[25px] -right-16 flex items-center z-20"><span className="text-xl font-black text-emerald-600 opacity-40">왼손</span></div>
+            <div className="relative bg-amber-50 w-16 py-6 rounded-full border-4 border-amber-100 flex flex-col items-center gap-2 shadow-inner z-10">
+              {[1, 2, 3].map(num => <RecorderHole key={num} num={num} filled={noteInfo.fingers.includes(num)} activeColor={noteInfo.color} />)}
+              <div className="w-10 h-1.5 bg-amber-200 rounded-full my-1"></div>
+              {[4, 5, 6, 7].map(num => <RecorderHole key={num} num={num} filled={noteInfo.fingers.includes(num)} activeColor={noteInfo.color} />)}
+            </div>
+            <div className="absolute bottom-[20px] -left-20 flex items-center z-20 text-right"><span className="text-xl font-black text-blue-600 opacity-40">오른손</span></div>
+          </div>
+          <div className={`mt-6 w-40 py-3 rounded-3xl text-center shadow-md border-2 border-white flex flex-col items-center justify-center leading-none ${noteInfo.color.replace('bg-', 'bg-opacity-10 bg-')} z-10`}>
+              {isSpecial && <span className={`text-lg font-black opacity-80 mb-0.5 ${noteInfo.color.replace('bg-', 'text-')}`}>{prefix}</span>}
+              <span className={`text-5xl font-black ${noteInfo.color.replace('bg-', 'text-')}`}>{label}</span>
+          </div>
+        </div>
+      );
+    };
+
+    const SongSelectModal = ({ isOpen, onClose, currentStepId, onSelectSong }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6" onClick={onClose}>
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+              <h2 className="text-3xl font-black text-indigo-900">연습할 곡을 선택해요</h2>
+              <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors"><X size={32} className="text-slate-400" /></button>
+            </div>
+            <div className="p-8 grid grid-cols-1 gap-4 overflow-y-auto max-h-[60vh]">
+              {ALL_SONGS.filter(s => s.stepId === currentStepId).map(song => (
+                <button key={song.id} onClick={() => onSelectSong(song)} className="group flex items-center justify-between p-6 bg-white border-2 border-slate-100 rounded-[2rem] hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left w-full">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform"><Music size={32} /></div>
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-800">{song.title}</h3>
+                      <p className="text-slate-400 font-bold">리코더 연습곡</p>
+                    </div>
+                  </div>
+                  <div className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black group-hover:translate-x-1 transition-transform shadow-md">연습 시작</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- [Main App] ---
+    function App() {
+      const [view, setView] = useState('home'); 
+      const [currentStepId, setCurrentStepId] = useState('left');
+      const [currentNote, setCurrentNote] = useState('시');
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [playIndex, setPlayIndex] = useState(0);
+      const [tempo, setTempo] = useState(1000);
+      const [showSongSelect, setShowSongSelect] = useState(false);
+      const [selectedSong, setSelectedSong] = useState(ALL_SONGS[0]);
+      
+      const audioCtxRef = useRef(null);
+      const scrollContainerRef = useRef(null);
+      const activeNoteRef = useRef(null);
+
+      const initAudio = useCallback(() => {
+        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+      }, []);
+
+      const playRecorderSound = useCallback((noteName) => {
+        if (noteName === '쉼표') return;
+        initAudio();
+        const ctx = audioCtxRef.current;
+        const data = NOTE_DATA[noteName];
+        if (!data) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(data.freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05); 
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6); 
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.7);
+      }, [initAudio]);
+
+      useEffect(() => {
+        if (isPlaying && activeNoteRef.current && scrollContainerRef.current) {
+          activeNoteRef.current.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+      }, [playIndex, isPlaying]);
+
+      useEffect(() => {
+        let timer;
+        if (isPlaying && view === 'practice') {
+          if (playIndex < selectedSong.notes.length) {
+            const targetNote = selectedSong.notes[playIndex];
+            setCurrentNote(targetNote);
+            playRecorderSound(targetNote);
+            timer = setTimeout(() => setPlayIndex(prev => prev + 1), tempo);
+          } else {
+            setIsPlaying(false);
+            setPlayIndex(0);
+            setCurrentNote(selectedSong.notes[0]);
+          }
+        }
+        return () => clearTimeout(timer);
+      }, [isPlaying, playIndex, view, selectedSong, tempo, playRecorderSound]);
+
+      const handlers = {
+        toLearning: (stepId, note) => {
+          initAudio();
+          setCurrentStepId(stepId);
+          setCurrentNote(note);
+          setView('learning');
+        },
+        toPracticeModal: (e, stepId) => {
+          e.stopPropagation(); 
+          setCurrentStepId(stepId);
+          setShowSongSelect(true);
+        },
+        startPractice: (song) => {
+          initAudio();
+          setSelectedSong(song);
+          setCurrentNote(song.notes[0]);
+          setPlayIndex(0);
+          setIsPlaying(false);
+          setShowSongSelect(false);
+          setView('practice');
+        },
+        toHome: () => {
+          setIsPlaying(false);
+          setPlayIndex(0);
+          setShowSongSelect(false);
+          setView('home');
+        }
+      };
+
+      const noteInfo = useMemo(() => currentNote === '쉼표' ? null : (NOTE_DATA[currentNote] || null), [currentNote]);
+      const stepTitle = useMemo(() => {
+        const step = STEPS.find(s => s.id === currentStepId);
+        if (!step) return '';
+        const emoji = { left: '🟢', right: '🔵', high: '🟣' }[currentStepId] || '';
+        return `${emoji} ${step.title}`;
+      }, [currentStepId]);
+
+      if (view === 'home') {
+        return (
+          <div className="relative h-screen w-full bg-indigo-50 flex flex-col items-center overflow-hidden text-slate-900">
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center w-full">
+              <header className="mb-10">
+                <div className="bg-white p-5 rounded-full w-28 h-28 flex items-center justify-center shadow-lg mx-auto mb-6 transition-transform hover:rotate-6"><Music size={72} className="text-indigo-600" /></div>
+                <h1 className="text-5xl font-black text-indigo-900 mb-3 tracking-tighter">즐거운 리코더 교실</h1>
+                <p className="text-indigo-600 font-bold text-xl italic underline decoration-indigo-200 underline-offset-4 tracking-tight">함께 배워요! 즐거운 리코더 연주 🎵</p>
+              </header>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl w-full px-4">
+                {STEPS.map((item) => (
+                  <div key={item.id} className="bg-white rounded-[3rem] shadow-2xl border-b-8 border-slate-200 flex flex-col overflow-hidden transition-transform hover:-translate-y-2">
+                    <button onClick={() => handlers.toLearning(item.id, item.defaultNote)} className="p-8 text-center group flex-1 flex flex-col items-center">
+                      <div className={`${item.color} w-20 h-20 rounded-3xl flex items-center justify-center mb-6 text-white group-hover:scale-110 group-hover:rotate-6 transition-transform shadow-inner`}>{item.icon}</div>
+                      <h2 className="text-3xl font-black text-slate-800 mb-3">{item.title}</h2>
+                      <p className="text-slate-400 font-bold text-base mb-4 w-full text-center px-2 whitespace-pre-line leading-relaxed">{item.desc}</p>
+                    </button>
+                    <div className="p-5 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+                      <button onClick={(e) => handlers.toPracticeModal(e, item.id)} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[1.5rem] font-black text-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"><Play size={20} fill="currentColor" /> 연습실 입장</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <SongSelectModal isOpen={showSongSelect} onClose={() => setShowSongSelect(false)} currentStepId={currentStepId} onSelectSong={handlers.startPractice} />
+          </div>
+        );
+      }
+
+      if (view === 'learning') {
+        const stepRows = { 'left': [['시', '라', '솔'], ['높은 도', '높은 레']], 'right': [['낮은 파', '낮은 미'], ['낮은 레', '낮은 도']], 'high': [['높은 미', '높은 파']] }[currentStepId] || [['도']];
+
+        return (
+          <div className="fixed inset-0 bg-slate-50 flex flex-col overflow-hidden text-slate-900 select-none">
+            <header className="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0 shadow-md z-50">
+              <div className="w-1/4"><button onClick={handlers.toHome} className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all active:scale-95 shadow-lg"><Home size={18} /> 처음으로</button></div>
+              <div className="w-2/4 flex justify-center"><div className="text-indigo-700 font-black text-xl tracking-tight bg-indigo-50 px-8 py-2.5 rounded-2xl border border-indigo-100">{stepTitle}</div></div>
+              <div className="w-1/4 flex justify-end">
+                <button onClick={(e) => handlers.toPracticeModal(e, currentStepId)} className="flex items-center gap-3 bg-white border-2 border-indigo-200 px-6 py-3 rounded-2xl shadow-md hover:bg-indigo-50 transition-all active:scale-95"><Music size={18} className="text-indigo-600" /><span className="text-sm font-black text-indigo-900 tracking-tight whitespace-nowrap">연습실 입장</span></button>
+              </div>
+            </header>
+            <main className="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden min-h-0">
+              <div className="col-span-4 h-full"><GuidePanel noteInfo={noteInfo} noteName={currentNote} /></div>
+              <div className="col-span-8 flex flex-col gap-6 overflow-hidden h-full">
+                <div className="bg-white p-6 rounded-[3rem] shadow-sm border border-slate-100 flex-none h-[35%] relative overflow-hidden flex flex-col justify-center">
+                  {noteInfo && (
+                    <svg viewBox="0 0 400 120" className="w-full h-full transform scale-110">
+                      {[25, 39, 53, 67, 81].map((y, i) => <line key={i} x1="20" y1={y} x2="380" y2={y} stroke="#1e293b" strokeWidth="2.5" />)}
+                      <image href={CLEF_IMAGE} x="25" y="5" height="95" width="45" />
+                      <g transform={`translate(220, ${noteInfo.yPos + 25})`}>
+                        {noteInfo.ledgerLine && <line x1="-22" y1="0" x2="22" y2="0" stroke="#1e293b" strokeWidth="2.5" />}
+                        <ellipse cx="0" cy="0" rx="12" ry="8.5" transform="rotate(-20)" fill={noteInfo.hex} />
+                        {noteInfo.yPos > 30 ? <line x1="11" y1="-2" x2="11" y2="-55" stroke={noteInfo.hex} strokeWidth="3" strokeLinecap="round" /> : <line x1="-11" y1="2" x2="-11" y2="55" stroke={noteInfo.hex} strokeWidth="3" strokeLinecap="round" />}
+                      </g>
+                    </svg>
+                  )}
+                </div>
+                <div className="bg-slate-100/50 p-8 rounded-[4rem] flex-1 overflow-hidden flex flex-col items-center justify-center gap-6 relative">
+                    {stepRows.map((row, idx) => (
+                      <div key={idx} className="flex flex-row items-center justify-center gap-8 w-full h-[45%]">
+                        {row.map(n => {
+                            const data = NOTE_DATA[n];
+                            const label = n.replace('높은 ', '').replace('낮은 ', '');
+                            return (
+                              <div key={n} className="flex-1 max-w-[220px] h-full">
+                                 <button onClick={() => { setCurrentNote(n); playRecorderSound(n); }} className={`flex flex-col items-center justify-center rounded-[2.5rem] transition-all border-b-8 active:scale-95 h-full w-full ${currentNote === n ? `${data.color} text-white shadow-xl border-slate-900 -translate-y-1` : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                                    <div className="flex flex-col items-center justify-center leading-tight">
+                                        {n.includes(' ') && <span className="text-xl font-black opacity-80 mb-1">{n.split(' ')[0]}</span>}
+                                        <span className="text-6xl md:text-7xl font-black">{label}</span>
+                                    </div>
+                                 </button>
+                              </div>
+                            )
+                        })}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </main>
+            <SongSelectModal isOpen={showSongSelect} onClose={() => setShowSongSelect(false)} currentStepId={currentStepId} onSelectSong={handlers.startPractice} />
+          </div>
+        );
+      }
+
+      if (view === 'practice') {
+        return (
+          <div className="fixed inset-0 bg-slate-50 flex flex-col overflow-hidden text-slate-900 select-none">
+            <header className="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0 shadow-md z-50">
+              <div className="w-1/4"><button onClick={() => { setIsPlaying(false); setView('learning'); }} className="flex items-center gap-3 px-6 py-3 bg-slate-200 rounded-2xl font-black text-sm text-slate-700 hover:bg-slate-300 transition-all active:scale-95 shadow-md"><ChevronRight size={18} className="rotate-180" /> 운지 안내</button></div>
+              <div className="w-2/4 flex justify-center"><div className="flex items-center gap-3 bg-indigo-50 border-2 border-indigo-100 px-8 py-2.5 rounded-2xl shadow-sm"><Music size={20} className="text-indigo-600" /><span className="text-xl font-black text-indigo-900 tracking-tight whitespace-nowrap">{selectedSong.title}</span></div></div>
+              <div className="w-1/4 flex justify-end"><button onClick={handlers.toHome} className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all active:scale-95 shadow-lg"><Home size={18} /> 처음으로</button></div>
+            </header>
+            <main className="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden min-h-0">
+              <div className="col-span-3 h-full"><GuidePanel noteInfo={noteInfo} noteName={currentNote} /></div>
+              <div className="col-span-9 flex flex-col h-full overflow-hidden">
+                <div className="flex-1 bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden relative flex flex-col">
+                  <div ref={scrollContainerRef} className="flex-1 overflow-x-auto whitespace-nowrap p-10 flex items-center no-scrollbar" style={{ scrollSnapType: 'x mandatory' }}>
+                    <div className="inline-flex items-center min-w-full px-[20vw]">
+                      {selectedSong.notes.map((note, idx) => {
+                        const data = NOTE_DATA[note];
+                        const isActive = playIndex === idx;
+                        return (
+                          <div key={idx} ref={isActive ? activeNoteRef : null} className={`relative inline-flex flex-col items-center flex-shrink-0 transition-all duration-300 ${isActive ? 'scale-110 z-20' : 'opacity-60'}`} style={{ width: '160px', scrollSnapAlign: 'center' }}>
+                            <div className={`relative w-32 h-48 flex items-center justify-center rounded-3xl ${isActive ? 'bg-yellow-50 shadow-xl ring-4 ring-yellow-200' : ''}`}>
+                              <div className="absolute inset-x-0 h-full flex flex-col justify-center pointer-events-none">
+                                {[25, 39, 53, 67, 81].map(y => <div key={y} className="border-b-2 border-slate-200 w-full absolute" style={{ top: `${y}px` }}></div>)}
+                                {idx === 0 && <div className="absolute -left-12 top-4 h-24 w-12 opacity-80 z-10"><img src={CLEF_IMAGE} className="h-full w-full object-contain" alt="Clef" /></div>}
+                                {idx > 0 && idx % 4 === 0 && <div className="absolute left-0 top-[25px] h-[56px] border-l-2 border-slate-100"></div>}
+                              </div>
+                              {note === '쉼표' ? <div className="z-10 text-slate-300 font-black text-4xl animate-pulse">Zzz</div> : data && (
+                                <svg width="70" height="130" viewBox="0 0 70 130" className="overflow-visible z-20">
+                                  <g transform={`translate(35, ${data.yPos + 25})`}>
+                                    {data.ledgerLine && <line x1="-22" y1="0" x2="22" y2="0" stroke={isActive ? data.hex : "#1e293b"} strokeWidth="3.5" />}
+                                    <ellipse cx="0" cy="0" rx="12" ry="9" transform="rotate(-20)" fill={isActive ? data.hex : '#334155'} />
+                                    {data.yPos > 30 ? <line x1="10" y1="-2" x2="10" y2="-55" stroke={isActive ? data.hex : '#334155'} strokeWidth="4" /> : <line x1="-10" y1="2" x2="-10" y2="55" stroke={isActive ? data.hex : '#334155'} strokeWidth="4" />}
+                                  </g>
+                                </svg>
+                              )}
+                              <div className="absolute -bottom-6 flex flex-col items-center">
+                                <div className={`px-4 py-1 rounded-full font-black text-lg shadow-md border-2 ${isActive ? `${note === '쉼표' ? 'bg-slate-400' : (data?.color || 'bg-slate-400')} text-white border-white scale-110` : 'bg-white text-slate-300 border-slate-100'}`}>
+                                  {note === '쉼표' ? '쉼' : note.replace('낮은 ', '').replace('높은 ', '')}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <footer className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between z-30 shadow-inner">
+                     <div className="flex items-center gap-4">
+                       <button onClick={() => setIsPlaying(!isPlaying)} className={`h-16 px-10 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-95 ${isPlaying ? 'bg-rose-500 text-white' : 'bg-emerald-600 text-white'}`}>
+                          {isPlaying ? <div className="flex items-center gap-2 font-black text-lg"><Square size={24} fill="currentColor" /> 연주 멈춤</div> : <div className="flex items-center gap-2 font-black text-lg"><Play size={24} fill="currentColor" /> 연주 시작</div>}
+                       </button>
+                       <button onClick={() => { setPlayIndex(0); setIsPlaying(false); setCurrentNote(selectedSong.notes[0]); }} className="h-16 w-16 rounded-2xl bg-white text-slate-500 flex items-center justify-center hover:bg-slate-100 shadow-sm border border-slate-200"><RotateCcw size={28} /></button>
+                     </div>
+                     <div className="flex gap-2 bg-white p-2 rounded-2xl border border-slate-200">
+                       {[{l:'느리게',v:1500},{l:'보통',v:1000},{l:'빠르게',v:700}].map(t => (
+                       <button key={t.l} onClick={() => { setTempo(t.v); setIsPlaying(false); setPlayIndex(0); }} className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${tempo === t.v ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>{t.l}</button>
+                       ))}
+                     </div>
+                  </footer>
+                </div>
+              </div>
+            </main>
+          </div>
+        );
+      }
+      return null;
+    }
+
+    // --- [렌더링 실행] ---
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
